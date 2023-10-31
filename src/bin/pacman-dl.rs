@@ -29,6 +29,10 @@ struct Options {
 	#[structopt(value_name = "PATH")]
 	pkg_file: Vec<PathBuf>,
 
+	/// Download all packages.
+	#[structopt(long, conflicts_with = "pkg", conflicts_with = "pkg_file")]
+	pkg_all: bool,
+
 	/// A repository to download packages from (specify the URL for the database archive).
 	#[structopt(long)]
 	#[structopt(value_name = "URL.db")]
@@ -90,7 +94,7 @@ async fn do_main(options: Options) -> Result<(), ()> {
 	let targets = read_files_to_vec(options.pkg, &options.pkg_file)?;
 	let databases = read_files_to_vec(options.db_url, &options.db_file)?;
 
-	if targets.is_empty() {
+	if targets.is_empty() && !options.pkg_all {
 		error!("Need atleast one package to download.");
 		return Err(());
 	}
@@ -108,7 +112,9 @@ async fn do_main(options: Options) -> Result<(), ()> {
 	let packages = sync_dbs(&http_client, &options.db_dir, &repositories).await?;
 	let packages = index_packages_by_name(&packages);
 
-	let selected_packages = if options.no_deps {
+	let selected_packages = if options.pkg_all {
+		packages.keys().copied().collect()
+	} else if options.no_deps {
 		targets.iter().map(String::as_str).collect()
 	} else {
 		let resolver = DependencyResolver::new(&packages);
@@ -364,7 +370,12 @@ fn pop_first<T: Copy + Ord>(set: &mut BTreeSet<T>) -> Option<T> {
 
 /// Download and extract a database file.
 async fn download_database(http_client: &reqwest::Client, directory: &Path, url: &reqwest::Url, index: usize, total: usize) -> Result<(), ()> {
-	plain_no_eol!("Downloading [{}/{}] {}...", Paint::blue(index + 1).bold(), Paint::blue(total).bold(), Paint::cyan(url));
+	plain_no_eol!(
+		"Downloading [{}/{}] {}...",
+		Paint::blue(index + 1).bold(),
+		Paint::blue(total).bold(),
+		Paint::cyan(url)
+	);
 	let last_modified_path = directory.join("last-modified");
 	let etag_path = directory.join("etag");
 	let last_modified = std::fs::read_to_string(&last_modified_path).ok();
@@ -443,7 +454,12 @@ async fn download_package(
 		false
 	};
 
-	plain_no_eol!("Downloading [{}/{}] {}...", Paint::blue(index + 1).bold(), Paint::blue(total).bold(), Paint::cyan(&package.name));
+	plain_no_eol!(
+		"Downloading [{}/{}] {}...",
+		Paint::blue(index + 1).bold(),
+		Paint::blue(total).bold(),
+		Paint::cyan(&package.name)
+	);
 	if skip {
 		println!(" {}", Paint::yellow("up to date"));
 		return Ok(false);
@@ -475,11 +491,7 @@ fn package_url(repository: &Repository, package: &DatabasePackage) -> reqwest::U
 }
 
 /// Add packages to a database.
-async fn add_to_database(
-	db_path: &Path,
-	pkg_dir: &Path,
-	packages: &[(&Repository, &DatabasePackage)],
-) -> Result<(), ()> {
+async fn add_to_database(db_path: &Path, pkg_dir: &Path, packages: &[(&Repository, &DatabasePackage)]) -> Result<(), ()> {
 	if packages.is_empty() {
 		plain!("No packages to add.");
 		return Ok(());
