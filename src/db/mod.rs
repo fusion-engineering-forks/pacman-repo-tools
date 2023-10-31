@@ -26,7 +26,7 @@ pub struct DatabasePackage {
 	pub version: PackageVersion,
 
 	#[serde(rename = "DESC")]
-	pub description: String,
+	pub description: Option<String>,
 
 	#[serde(default)]
 	pub groups: Vec<String>,
@@ -177,7 +177,7 @@ mod test {
 		assert!(parsed.version.epoch == 0);
 		assert!(parsed.version.pkgver == "5.8.9");
 		assert!(parsed.version.pkgrel == "2");
-		assert!(parsed.description == "The Linux Kernel and modules - AArch64 multi-platform");
+		assert!(parsed.description.as_deref() == Some("The Linux Kernel and modules - AArch64 multi-platform"));
 		assert!(parsed.compressed_size == 77694896);
 		assert!(parsed.installed_size == 141654447);
 		assert!(parsed.md5sum == "18c5b105fe6481a61cb138e6bb9df18c");
